@@ -1,7 +1,3 @@
-Here is a professional, concise, and technical English README for your project.
-
----
-
 # BetterHttp
 
 **BetterHttp** is a high-performance, multithreaded HTTP client plugin for Godot 4.x.
