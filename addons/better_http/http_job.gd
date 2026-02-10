@@ -1,10 +1,6 @@
-# addons/better_http/http_job.gd
 extends RefCounted
 class_name HttpJob
 
-# 注意：为了线程安全传递数据，通常建议信号传 Dictionary，
-# 由主线程的 Manager 包装成 BetterHttpResponse 对象。
-# 如果你确定要在线程内实例化资源对象，请确保该类是线程安全的。
 signal finished(result: Dictionary)
 
 var _client: HTTPClient
@@ -12,16 +8,20 @@ var _url: String
 var _method: int
 var _headers: PackedStringArray
 var _body: String
+var _timeout: float  # 改为浮点数，单位秒
 
-func _init(client: HTTPClient, url: String, method: int, headers: PackedStringArray, body: String):
+func _init(client: HTTPClient, url: String, method: int, headers: PackedStringArray, body: String, timeout: float = 6.0):
 	_client = client
 	_url = url
 	_method = method
 	_headers = headers
 	_body = body
+	_timeout = timeout
 
 # --- 主执行流程 ---
 func execute():
+	var start_time = Time.get_ticks_msec()
+	
 	# 准备一个空的返回结构
 	var response_data = {
 		"code": 0,
@@ -32,92 +32,56 @@ func execute():
 	}
 	
 	# Step 1: 解析 URL
+	if _check_timeout(start_time):
+		_finish(response_data, ERR_TIMEOUT)
+		return
+		
 	var url_info = _parse_url(_url)
 	if not url_info.valid:
 		_finish(response_data, ERR_INVALID_PARAMETER)
 		return
 
-	# Step 2: 连接服务器
-	var conn_err = _connect_client(url_info)
+	# Step 2: 连接服务器（带超时）
+	if _check_timeout(start_time):
+		_finish(response_data, ERR_TIMEOUT)
+		return
+		
+	var conn_err = _connect_client_with_timeout(url_info, start_time)
 	if conn_err != OK:
 		_finish(response_data, conn_err)
 		return
 
 	# Step 3: 发送请求
+	if _check_timeout(start_time):
+		_finish(response_data, ERR_TIMEOUT)
+		_client.close()
+		return
+		
 	var req_err = _send_request(url_info)
 	if req_err != OK:
 		_finish(response_data, req_err)
+		_client.close()
 		return
 
-	# Step 4: 读取响应 (填充 response_data)
-	var read_err = _read_response(response_data)
+	# Step 4: 读取响应（带超时）
+	if _check_timeout(start_time):
+		_finish(response_data, ERR_TIMEOUT)
+		_client.close()
+		return
+		
+	var read_err = _read_response_with_timeout(response_data, start_time)
 	
 	# Step 5: 完成
 	_finish(response_data, read_err)
+	_client.close()
 
+# --- 超时检查函数 ---
+func _check_timeout(start_time: int) -> bool:
+	var elapsed = (Time.get_ticks_msec() - start_time) / 1000.0
+	return elapsed > _timeout
 
-# --- 辅助函数：URL 解析 ---
-func _parse_url(input_url: String) -> Dictionary:
-	var result = {
-		"valid": false,
-		"domain": "",
-		"port": 80,
-		"path": "/",
-		"is_ssl": false
-	}
-	
-	# A. 确定协议
-	var is_ssl = input_url.begins_with("https://")
-	var scheme = "https://" if is_ssl else "http://"
-	
-	# B. 剥离协议头
-	var url_no_scheme = input_url
-	if input_url.begins_with(scheme):
-		url_no_scheme = input_url.substr(scheme.length())
-	elif input_url.begins_with("http://"): 
-		# 修正：用户输入 http:// 但原本判定逻辑可能是 https 的情况
-		is_ssl = false
-		scheme = "http://"
-		url_no_scheme = input_url.substr(7)
-	
-	# C. 分离 域名部分(Authority) 和 路径部分(Path)
-	var slash_pos = url_no_scheme.find("/")
-	var authority = ""
-	
-	if slash_pos == -1:
-		authority = url_no_scheme
-		result.path = "/"
-	else:
-		authority = url_no_scheme.left(slash_pos)
-		result.path = url_no_scheme.substr(slash_pos)
-		
-	# D. 从 Authority 中分离 端口
-	var domain = authority
-	var port = 443 if is_ssl else 80
-	
-	var colon_pos = authority.find(":")
-	if colon_pos != -1:
-		domain = authority.left(colon_pos)
-		var p_str = authority.substr(colon_pos + 1)
-		if p_str.is_valid_int():
-			port = p_str.to_int()
-	
-	# 填充结果
-	result.domain = domain
-	result.port = port
-	result.is_ssl = is_ssl
-	result.valid = true
-	
-	# 简单校验
-	if domain.is_empty():
-		result.valid = false
-	
-	return result
-
-
-# --- 辅助函数：建立连接 ---
-func _connect_client(url_info: Dictionary) -> int:
-	# 确保重置旧状态
+# --- 带超时的连接 ---
+func _connect_client_with_timeout(url_info: Dictionary, start_time: int) -> int:
 	_client.close()
 	
 	var opts = TLSOptions.client() if url_info.is_ssl else null
@@ -126,34 +90,60 @@ func _connect_client(url_info: Dictionary) -> int:
 	if err != OK:
 		return err
 		
-	# 轮询直到连接成功或失败
+	# 带超时的轮询
+	var poll_start = Time.get_ticks_msec()
 	while _client.get_status() == HTTPClient.STATUS_CONNECTING or _client.get_status() == HTTPClient.STATUS_RESOLVING:
 		_client.poll()
-		OS.delay_msec(2)
+		
+		# 检查连接超时
+		if _check_timeout(start_time):
+			_client.close()
+			return ERR_TIMEOUT
+			
+		# 检查单个操作超时（DNS解析等）
+		var poll_elapsed = (Time.get_ticks_msec() - poll_start) / 1000.0
+		if poll_elapsed > min(_timeout / 2.0, 10.0):  # 最多等待10秒或总超时的一半
+			_client.close()
+			return ERR_TIMEOUT
+			
+		OS.delay_msec(10)  # 稍微延迟，避免 CPU 占用过高
 		
 	if _client.get_status() != HTTPClient.STATUS_CONNECTED:
 		return FAILED
 		
 	return OK
 
-
-# --- 辅助函数：发送请求 ---
+# --- 带超时的发送请求 ---
 func _send_request(url_info: Dictionary) -> int:
-	# 等待上一个请求状态结束（如果是复用连接）
+	# 等待上一个请求状态结束
+	var poll_start = Time.get_ticks_msec()
 	while _client.get_status() == HTTPClient.STATUS_REQUESTING:
 		_client.poll()
+		
+		var poll_elapsed = (Time.get_ticks_msec() - poll_start) / 1000.0
+		if poll_elapsed > 5.0:  # 请求发送最多等待5秒
+			return ERR_TIMEOUT
+			
 		OS.delay_msec(1)
 		
 	var err = _client.request(_method, url_info.path, _headers, _body)
 	return err
 
-
-# --- 辅助函数：读取响应 ---
-func _read_response(out_data: Dictionary) -> int:
+# --- 带超时的读取响应 ---
+func _read_response_with_timeout(out_data: Dictionary, start_time: int) -> int:
 	# 等待请求发送完成并开始接收响应
+	var wait_start = Time.get_ticks_msec()
 	while _client.get_status() == HTTPClient.STATUS_REQUESTING:
 		_client.poll()
-		OS.delay_msec(1)
+		
+		if _check_timeout(start_time):
+			return ERR_TIMEOUT
+			
+		var wait_elapsed = (Time.get_ticks_msec() - wait_start) / 1000.0
+		if wait_elapsed > 5.0:  # 等待响应最多5秒
+			return ERR_TIMEOUT
+			
+		OS.delay_msec(10)
 	
 	# 检查是否有响应
 	if not _client.has_response():
@@ -166,34 +156,94 @@ func _read_response(out_data: Dictionary) -> int:
 	if not _client.is_response_chunked():
 		out_data["length"] = _client.get_response_body_length()
 	
-	# 读取 Body (循环)
+	# 读取 Body（带超时）
 	var rb = PackedByteArray()
-	
-	# 预分配内存优化 (如果是 Content-Length 模式)
-	# 注意：resize 会填充 0，所以 append 逻辑需要调整，或者直接用 append_array 让底层处理
-	# 这里为了通用性和安全性，还是用 append_array，但必须避免 + 操作符
+	var body_start = Time.get_ticks_msec()
 	
 	while _client.get_status() == HTTPClient.STATUS_BODY:
 		_client.poll()
+		
+		# 检查总超时
+		if _check_timeout(start_time):
+			return ERR_TIMEOUT
+			
+		# 检查读取 Body 超时（单独计算，因为可能下载大文件）
+		var body_elapsed = (Time.get_ticks_msec() - body_start) / 1000.0
+		if body_elapsed > _timeout * 0.8:  # 给 Body 读取分配 80% 的时间
+			return ERR_TIMEOUT
+			
 		var chunk = _client.read_response_body_chunk()
 		if chunk.size() > 0:
-			# [重要优化] 使用 append_array 而不是 +
 			rb.append_array(chunk)
+			body_start = Time.get_ticks_msec()  # 重置超时计时器（只要有数据）
 		else:
-			OS.delay_msec(1)
+			# 没有数据时，等待一下但不要太长
+			var chunk_elapsed = (Time.get_ticks_msec() - body_start) / 1000.0
+			if chunk_elapsed > 2.0:  # 单个 chunk 最多等待2秒
+				return ERR_TIMEOUT
+			OS.delay_msec(50)
 			
 	out_data["body"] = rb
 	return OK
 
+# --- 原有的辅助函数（保持不变）---
+func _parse_url(input_url: String) -> Dictionary:
+	var result = {
+		"valid": false,
+		"domain": "",
+		"port": 80,
+		"path": "/",
+		"is_ssl": false
+	}
+	
+	var is_ssl = input_url.begins_with("https://")
+	var scheme = "https://" if is_ssl else "http://"
+	
+	var url_no_scheme = input_url
+	if input_url.begins_with(scheme):
+		url_no_scheme = input_url.substr(scheme.length())
+	elif input_url.begins_with("http://"): 
+		is_ssl = false
+		scheme = "http://"
+		url_no_scheme = input_url.substr(7)
+	
+	var slash_pos = url_no_scheme.find("/")
+	var authority = ""
+	
+	if slash_pos == -1:
+		authority = url_no_scheme
+		result.path = "/"
+	else:
+		authority = url_no_scheme.left(slash_pos)
+		result.path = url_no_scheme.substr(slash_pos)
+		
+	var domain = authority
+	var port = 443 if is_ssl else 80
+	
+	var colon_pos = authority.find(":")
+	if colon_pos != -1:
+		domain = authority.left(colon_pos)
+		var p_str = authority.substr(colon_pos + 1)
+		if p_str.is_valid_int():
+			port = p_str.to_int()
+	
+	result.domain = domain
+	result.port = port
+	result.is_ssl = is_ssl
+	result.valid = true
+	
+	if domain.is_empty():
+		result.valid = false
+	
+	return result
 
 # --- 结束处理 ---
 func _finish(data: Dictionary, error_code: int):
 	data["error"] = error_code
-	
-	# 如果发生错误，且没有 Body，确保 body 字段不是 null
+	if error_code == ERR_TIMEOUT:
+		data["code"] = 408  # HTTP 408 Request Timeout
 	if data["body"] == null:
 		data["body"] = PackedByteArray()
-		
 	call_deferred("_emit_main", data)
 
 func _emit_main(data: Dictionary):

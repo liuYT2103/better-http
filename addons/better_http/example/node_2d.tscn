@@ -1,11 +1,11 @@
 [gd_scene format=3 uid="uid://dy85mbj7gpxi4"]
 
-[ext_resource type="Script" uid="uid://7nvryjqf23aw" path="res://example/node_2d.gd" id="1_wtcfe"]
-[ext_resource type="Texture2D" uid="uid://ln3vn3pvv6qo" path="res://example/icon.svg" id="2_0e48y"]
+[ext_resource type="Script" uid="uid://r87jsg3ubg25" path="res://addons/better_http/example/node_2d.gd" id="1_kx0mq"]
+[ext_resource type="Texture2D" uid="uid://b8dpxdydncnhb" path="res://addons/better_http/icon.png" id="2_kx0mq"]
 
 [node name="Example" type="Node2D" unique_id=1835976638]
-script = ExtResource("1_wtcfe")
+script = ExtResource("1_kx0mq")
 
-[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1992073415]
-position = Vector2(225, 305)
-texture = ExtResource("2_0e48y")
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=2101009123]
+position = Vector2(130, 320)
+texture = ExtResource("2_kx0mq")

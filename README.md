@@ -20,6 +20,14 @@ It provides a modern, script-based alternative to the standard `HTTPRequest` nod
 3. Enable **BetterHttp**.
 4. **Restart the editor** to ensure the Autoload singleton is registered correctly.
 
+## Example
+
+![Example Code](doc/example.png)
+
+Response Console Log :
+
+![Example Result](doc/result.png)
+
 ## Usage
 
 ### Basic GET Request
@@ -111,12 +119,6 @@ The `HttpResponse` object returned by requests contains the following properties
 * `text() -> String`: returns the body as a UTF-8 string.
 * `json() -> Variant`: Parses the body as JSON. Returns `null` on failure.
 * `save_to_file(path: String) -> Error`: Saves the raw body directly to a file.
-
-## Example
-
-![Example Code](doc/example.png)
-
-![Example Result](doc/result.png)
 
 ## License
 

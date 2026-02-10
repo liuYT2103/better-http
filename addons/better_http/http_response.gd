@@ -6,6 +6,7 @@ var status: int
 var headers: Dictionary
 var _body_raw: PackedByteArray
 var _error: int # Godot 的 Error 枚举
+var _errmsg:String = ""
 var length: int
 
 # --- 初始化 ---
@@ -15,6 +16,10 @@ func _init(p_code: int = 0, p_headers: Dictionary = {}, p_body: PackedByteArray 
 	_body_raw = p_body
 	_error = p_error
 	length = p_length
+
+func _set_error(p_error: int = OK, p_errmsg:String = ""):
+	_error = p_error
+	_errmsg = p_errmsg
 
 # --- 核心功能：获取文本 ---
 func text() -> String:
