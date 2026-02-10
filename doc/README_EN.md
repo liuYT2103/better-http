@@ -23,11 +23,11 @@ It provides a modern, script-based alternative to the standard `HTTPRequest` nod
 
 ## Example
 
-![Example Code](doc/example.png)
+![Example Code](example.png)
 
 Response Console Log :
 
-![Example Result](doc/result.png)
+![Example Result](result.png)
 
 ## Usage
 
