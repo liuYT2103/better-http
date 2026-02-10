@@ -10,7 +10,7 @@ It provides a modern, script-based alternative to the standard `HTTPRequest` nod
 * **Node-Independent:** Operates as a global Singleton (Autoload). Call it from anywhere (`Node`, `Resource`, `RefCounted`, or other threads) without `add_child()`.
 * **Await Support:** Fully supports modern GDScript `await` syntax for linear, readable code execution.
 * **Smart Object Pooling:** Implements an internal pool for `HTTPClient` instances to minimize memory allocation overhead and reduce Garbage Collection (GC) pressure.
-* **Type Safety:** Returns a strongly typed `HttpResponse` object, providing full Autocomplete/IntelliSense support in the Godot Editor.
+* **Type Safety:** Returns a strongly typed `BetterHttpResponse` object, providing full Autocomplete/IntelliSense support in the Godot Editor.
 * **Built-in Utilities:** Includes automatic JSON parsing, smart header merging, and automatic User-Agent handling to prevent server rejection.
 
 ## Installation
@@ -30,11 +30,40 @@ Response Console Log :
 
 ## Usage
 
+### Default Options
+
+```gdscript
+func _ready() -> void:
+	BetterHttp.defaults.base_url = "https://jsonplaceholder.typicode.com"
+	BetterHttp.defaults.headers.COMMON["Authorization"] = "Bearer Token"
+	BetterHttp.defaults.headers.GET["Authorization"] = "Bearer Get Token"
+	BetterHttp.defaults.timeout = 5.0
+```
+
+### Interceptor
+
+```gdscript
+func _ready() -> void:
+	var request_interceptor = func(url:String, method, headers, body):
+		print("URL: %s" % url)
+		print("Final Headers: %s" % JSON.stringify(headers))
+		return url.ends_with("3")
+	BetterHttp.interceptors.use_request(request_interceptor)
+	
+	var response_interceptor = func(response:BetterBetterHttpResponse):
+		print("Response Status: %s" % response.status)
+	BetterHttp.interceptors.use_response(response_interceptor)
+
+	# clean
+	BetterHttp.interceptors.eject_request(request_interceptor)
+	BetterHttp.interceptors.eject_response(response_interceptor)
+```
+
 ### Basic GET Request
 
 ```gdscript
 func _ready():
-	# Returns a strongly typed HttpResponse object
+	# Returns a strongly typed BetterHttpResponse object
 	var response = await BetterHttp.GET("https://jsonplaceholder.typicode.com/todos/1")
 	
 	if response.is_success():
@@ -98,14 +127,14 @@ func download_image():
 
 All methods are asynchronous and must be awaited.
 
-* `GET(url: String, headers: PackedStringArray = []) -> HttpResponse`
-* `POST(url: String, body: String, headers: PackedStringArray = [...]) -> HttpResponse`
-* `PUT(url: String, body: String, headers: PackedStringArray = [...]) -> HttpResponse`
-* `DELETE(url: String, headers: PackedStringArray = []) -> HttpResponse`
+* `GET(url: String, query: Dictionary, headers: PackedStringArray = []) -> BetterHttpResponse`
+* `POST(url: String, body: String, headers: PackedStringArray = [...]) -> BetterHttpResponse`
+* `PUT(url: String, body: String, headers: PackedStringArray = [...]) -> BetterHttpResponse`
+* `DELETE(url: String, query: Dictionary, headers: PackedStringArray = []) -> BetterHttpResponse`
 
-### HttpResponse Object
+### BetterHttpResponse Object
 
-The `HttpResponse` object returned by requests contains the following properties and methods:
+The `BetterHttpResponse` object returned by requests contains the following properties and methods:
 
 * **Properties:**
 * `code` (int): HTTP status code (e.g., 200, 404).
@@ -118,7 +147,6 @@ The `HttpResponse` object returned by requests contains the following properties
 * `is_success() -> bool`: Returns `true` if `error` is `OK` and `code` is between 200-299.
 * `text() -> String`: returns the body as a UTF-8 string.
 * `json() -> Variant`: Parses the body as JSON. Returns `null` on failure.
-* `save_to_file(path: String) -> Error`: Saves the raw body directly to a file.
 
 ## License
 
