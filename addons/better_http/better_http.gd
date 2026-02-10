@@ -33,7 +33,7 @@ func _request(url: String, method: int, headers: Dictionary, body: String) -> Be
 		
 	# final_headers.append("Accept-Encoding: gzip, deflate")
 	# 创建 Job，注入 Client
-	var array_header = header_dict_to_array(final_headers)
+	var array_header = dict_to_array(final_headers, ": ")
 	var client = _borrow_client()
 	var job = HttpJob.new(client, final_url, method, array_header, body, defaults.timeout)
 	
@@ -62,10 +62,10 @@ func merge_header(headers: Dictionary, addons:Dictionary) -> Dictionary:
 	headers.merge(addons, true)
 	return headers
 
-func header_dict_to_array(headers: Dictionary) -> PackedStringArray:
+func dict_to_array(headers: Dictionary, symbol:String = "=") -> PackedStringArray:
 	var result:PackedStringArray = []
 	for key in headers.keys():
-		result.append("%s: %s" % [key, headers[key]])
+		result.append("%s%s%s" % [key, symbol, headers[key]])
 	return result
 
 # --- 池化逻辑 (线程安全) ---
@@ -74,9 +74,8 @@ func _borrow_client() -> HTTPClient:
 	var client: HTTPClient
 	
 	if _client_pool.is_empty():
-		# 池空了，不得不新建一个
+		# 池空了新建一个
 		client = HTTPClient.new()
-		# 可以在这里设置一些全局默认值，如 blocking_mode_enabled = false
 	else:
 		# 复用旧的
 		client = _client_pool.pop_back()
@@ -85,36 +84,68 @@ func _borrow_client() -> HTTPClient:
 	return client
 
 func _return_client(client: HTTPClient):
-	# 简单清洗一下状态
-	# 注意：connect_to_host 会自动重置状态，但为了保险可以手动 close
-	# 如果你想做 Keep-Alive (连接复用)，逻辑会复杂十倍，这里先做对象复用
 	client.close()
 	
 	_pool_mutex.lock()
 	if _client_pool.size() < MAX_POOL_SIZE:
 		_client_pool.append(client)
 	else:
-		# 池子满了，这个多余的 client 就让它随风而去(被 GC)吧
+		# 池子满了，这个多余的 client GC 吧
 		pass
 	_pool_mutex.unlock()
-# --- 公开 API (全大写) ---
 
-func GET(url: String, headers: Dictionary = {}) -> BetterHttpResponse:
-	var common_headers = merge_header(headers, defaults.headers.COMMON)
-	var final_headers = merge_header(common_headers, defaults.headers.GET)
-	return await _request(url, M_GET, final_headers, "")
+# --- 公开 API ---
+func GET(url: String, query: Dictionary = {}, headers: Dictionary = {}) -> BetterHttpResponse:
+	url = _process_query(url, query)
+	return await _process_request_with_data(url, M_GET, null, headers)
 
-func POST(url: String, data: String, headers: Dictionary = {"Content-Type": "application/json"}) -> BetterHttpResponse:
-	var common_headers = merge_header(headers, defaults.headers.COMMON)
-	var final_headers = merge_header(common_headers, defaults.headers.POST)
-	return await _request(url, M_POST, final_headers, data)
+func POST(url: String, data: Variant = null, headers: Dictionary = {}) -> BetterHttpResponse:
+	return await _process_request_with_data(url, M_POST, data, headers)
 
-func PUT(url: String, data: String, headers: Dictionary = {"Content-Type": "application/json"}) -> BetterHttpResponse:
-	var common_headers = merge_header(headers, defaults.headers.COMMON)
-	var final_headers = merge_header(common_headers, defaults.headers.PUT)
-	return await _request(url, M_PUT, final_headers, data)
+func PUT(url: String, data: Variant = null, headers: Dictionary = {}) -> BetterHttpResponse:
+	return await _process_request_with_data(url, M_PUT, data, headers)
 
-func DELETE(url: String, headers: Dictionary = {}) -> BetterHttpResponse:
-	var common_headers = merge_header(headers, defaults.headers.COMMON)
-	var final_headers = merge_header(common_headers, defaults.headers.DELETE)
-	return await _request(url, M_DELETE, final_headers, "")
+func DELETE(url: String, query: Dictionary = {}, headers: Dictionary = {}) -> BetterHttpResponse:
+	url = _process_query(url, query)
+	return await _process_request_with_data(url, M_DELETE, null, headers)
+
+# --- 内部统一处理逻辑 ---
+func _process_query(url:String, query:Dictionary) -> String:
+	if not query.is_empty():
+		# 创建一个临时实例来调用该方法
+		var client_temp = HTTPClient.new()
+		var query_string = client_temp.query_string_from_dict(query)
+		
+		if "?" in url:
+			url += "&" + query_string
+		else:
+			url += "?" + query_string
+	return url
+
+func _process_request_with_data(url: String, method: int, data: Variant, extra_headers: Dictionary) -> BetterHttpResponse:
+	# 1. 统一合并三层 Header: Common + Method-Specific + Extra
+	var final_headers = defaults.headers.COMMON.duplicate()
+	
+	# 根据 method 获取对应的默认 header 配置
+	var method_defaults = {}
+	match method:
+		M_GET: method_defaults = defaults.headers.GET
+		M_POST: method_defaults = defaults.headers.POST
+		M_PUT: method_defaults = defaults.headers.PUT
+		M_DELETE: method_defaults = defaults.headers.DELETE
+	
+	final_headers.merge(method_defaults, true)
+	final_headers.merge(extra_headers, true)
+	
+	# 2. 自动序列化逻辑
+	var body_str = ""
+	if data != null:
+		if data is Dictionary or data is Array:
+			body_str = JSON.stringify(data)
+			# 如果用户没手动设 Content-Type，则自动补全为 JSON
+			if not final_headers.has("Content-Type") and not final_headers.has("content-type"):
+				final_headers["Content-Type"] = "application/json"
+		else:
+			body_str = str(data)
+	
+	return await _request(url, method, final_headers, body_str)
