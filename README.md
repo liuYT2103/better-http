@@ -32,7 +32,7 @@ Response Console Log :
 
 ### Default Options
 
-```gdscript
+```js
 func _ready() -> void:
 	BetterHttp.defaults.base_url = "https://jsonplaceholder.typicode.com"
 	BetterHttp.defaults.headers.COMMON["Authorization"] = "Bearer Token"
@@ -42,7 +42,7 @@ func _ready() -> void:
 
 ### Interceptor
 
-```gdscript
+```js
 func _ready() -> void:
 	var request_interceptor = func(url:String, method, headers, body):
 		print("URL: %s" % url)
@@ -61,7 +61,7 @@ func _ready() -> void:
 
 ### Basic GET Request
 
-```gdscript
+```js
 func _ready():
 	# Returns a strongly typed BetterHttpResponse object
 	var response = await BetterHttp.GET("https://jsonplaceholder.typicode.com/todos/1")
@@ -77,47 +77,18 @@ func _ready():
 
 ### POST Request with JSON
 
-```gdscript
+```js
 func send_score():
-	var payload = JSON.stringify({
+	var payload = {
 		"username": "PlayerOne",
 		"score": 9999
-	})
+	}
 	
 	# Content-Type header is set to application/json by default for POST
 	var response = await BetterHttp.POST("https://api.example.com/scores", payload)
 	
 	if response.is_success():
 		print("Score submitted successfully.")
-
-```
-
-### Custom Headers
-
-```gdscript
-func get_protected_data():
-	var headers = [
-		"Authorization: Bearer YOUR_TOKEN",
-        "Custom-Header: Value"
-	]
-	
-	var response = await BetterHttp.GET("https://api.example.com/protected", headers)
-
-```
-
-### Binary Data (Downloading Files)
-
-```gdscript
-func download_image():
-	var response = await BetterHttp.GET("https://godotengine.org/assets/logo.png")
-	
-	if response.is_success():
-		var image = Image.new()
-		# Access raw bytes via body_raw
-		var err = image.load_png_from_buffer(response.body_raw)
-		if err == OK:
-			var texture = ImageTexture.create_from_image(image)
-			$Sprite2D.texture = texture
 
 ```
 
