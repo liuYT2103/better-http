@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://dy85mbj7gpxi4"]
 
 [ext_resource type="Script" uid="uid://r87jsg3ubg25" path="res://addons/better_http/example/node_2d.gd" id="1_kx0mq"]
-[ext_resource type="Texture2D" uid="uid://b8dpxdydncnhb" path="res://addons/better_http/icon.png" id="2_kx0mq"]
+[ext_resource type="Texture2D" uid="uid://cnxymrw8ax5ny" path="res://addons/better_http/icon.png" id="2_kx0mq"]
 
 [node name="Example" type="Node2D" unique_id=1835976638]
 script = ExtResource("1_kx0mq")
