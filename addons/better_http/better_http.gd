@@ -44,7 +44,7 @@ func _request(url: String, method: int, headers: Dictionary, body: String) -> Be
 	
 	_return_client(client)
 	
-	# [关键点] 将字典包装为强类型的 HttpResponse 对象
+	# 包装为 HttpResponse 对象
 	var response = BetterHttpResponse.new(
 		raw_result["code"],
 		raw_result["headers"],
@@ -112,7 +112,6 @@ func DELETE(url: String, query: Dictionary = {}, headers: Dictionary = {}) -> Be
 # --- 内部统一处理逻辑 ---
 func _process_query(url:String, query:Dictionary) -> String:
 	if not query.is_empty():
-		# 创建一个临时实例来调用该方法
 		var client_temp = HTTPClient.new()
 		var query_string = client_temp.query_string_from_dict(query)
 		
@@ -142,7 +141,6 @@ func _process_request_with_data(url: String, method: int, data: Variant, extra_h
 	if data != null:
 		if data is Dictionary or data is Array:
 			body_str = JSON.stringify(data)
-			# 如果用户没手动设 Content-Type，则自动补全为 JSON
 			if not final_headers.has("Content-Type") and not final_headers.has("content-type"):
 				final_headers["Content-Type"] = "application/json"
 		else:

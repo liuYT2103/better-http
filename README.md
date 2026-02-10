@@ -1,124 +1,126 @@
+[English](doc/README_EN.md) | 简体中文
 # BetterHttp
 
-**BetterHttp** is a high-performance, multithreaded HTTP client plugin for Godot 4.x.
+**BetterHttp** 是一个专为 Godot 4.x 开发的高性能、多线程 HTTP 客户端插件。
 
-It provides a modern, script-based alternative to the standard `HTTPRequest` node. By leveraging `WorkerThreadPool` and low-level `HTTPClient`, BetterHttp executes network requests asynchronously on background threads without blocking the main game loop or requiring nodes to be added to the SceneTree.
+它提供了一种现代化的、基于脚本的方式来替代标准的 `HTTPRequest` 节点。通过利用 `WorkerThreadPool` 和底层的 `HTTPClient`，BetterHttp 在后台线程异步执行网络请求，完全不会阻塞游戏主循环，也不需要将节点添加到场景树（SceneTree）中。
 
-## Features
+## 功能特性
 
-* **True Multithreading:** Utilizes Godot's `WorkerThreadPool` to handle DNS resolution, connection, and data transfer off the main thread. Prevents frame drops during heavy network operations.
-* **Node-Independent:** Operates as a global Singleton (Autoload). Call it from anywhere (`Node`, `Resource`, `RefCounted`, or other threads) without `add_child()`.
-* **Await Support:** Fully supports modern GDScript `await` syntax for linear, readable code execution.
-* **Smart Object Pooling:** Implements an internal pool for `HTTPClient` instances to minimize memory allocation overhead and reduce Garbage Collection (GC) pressure.
-* **Type Safety:** Returns a strongly typed `BetterHttpResponse` object, providing full Autocomplete/IntelliSense support in the Godot Editor.
-* **Built-in Utilities:** Includes automatic JSON parsing, smart header merging, and automatic User-Agent handling to prevent server rejection.
+* **真正的多线程**：利用 Godot 的 `WorkerThreadPool` 在后台线程处理 DNS 解析、连接和数据传输。有效防止在执行重度网络操作时出现掉帧。
+* **独立于节点**：作为全局单例（Autoload）运行。无需调用 `add_child()`，即可在任何地方（`Node`、`Resource`、`RefCounted` 或其他线程）直接调用。
+* **支持 Await**：完美支持现代 GDScript 的 `await` 语法，让异步代码像同步代码一样线性、易读。
+* **智能对象池**：内置 `HTTPClient` 实例池，最大限度减少内存分配开销，并降低垃圾回收（GC）压力。
+* **类型安全**：返回强类型的 `BetterHttpResponse` 对象，在 Godot 编辑器中提供完整的自动补全和代码提示支持。
+* **内置实用工具**：包括自动 JSON 解析、智能 Header 合并以及自动 User-Agent 处理（防止请求被服务器拒绝）。
 
-## Installation
+## 安装步骤
 
-1. Copy the `better_http` folder into your project's `addons/` directory.
-2. Open **Project** -> **Project Settings** -> **Plugins**.
-3. Enable **BetterHttp**.
-4. **Restart the editor** to ensure the Autoload singleton is registered correctly.
+1. 将 `better_http` 文件夹复制到你项目的 `addons/` 目录下。
+2. 打开 **项目 (Project)** -> **项目设置 (Project Settings)** -> **插件 (Plugins)**。
+3. 启用 **BetterHttp**。
+4. **重启编辑器** 以确保 Autoload 单例被正确注册。
 
-## Example
+## 示例
 
-![Example Code](doc/example.png)
+响应控制台日志：
 
-Response Console Log :
+## 使用方法
 
-![Example Result](doc/result.png)
+### 默认配置
 
-## Usage
-
-### Default Options
-
-```js
+```gdscript
 func _ready() -> void:
-	BetterHttp.defaults.base_url = "https://jsonplaceholder.typicode.com"
-	BetterHttp.defaults.headers.COMMON["Authorization"] = "Bearer Token"
-	BetterHttp.defaults.headers.GET["Authorization"] = "Bearer Get Token"
-	BetterHttp.defaults.timeout = 5.0
+    # 支持配置默认地址
+    BetterHttp.defaults.base_url = "https://jsonplaceholder.typicode.com" 
+    # 支持配置全局默认请求头
+    BetterHttp.defaults.headers.COMMON["Authorization"] = "Bearer Token" 
+    # 支持根据请求方式配置特定的默认请求头
+    BetterHttp.defaults.headers.GET["Authorization"] = "Bearer Get Token" 
+    BetterHttp.defaults.timeout = 5.0
+
 ```
 
-### Interceptor
+### 拦截器 (Interceptor)
 
-```js
+```gdscript
 func _ready() -> void:
-	var request_interceptor = func(url:String, method, headers, body):
-		print("URL: %s" % url)
-		print("Final Headers: %s" % JSON.stringify(headers))
-		return url.ends_with("3")
-	BetterHttp.interceptors.use_request(request_interceptor)
-	
-	var response_interceptor = func(response:BetterBetterHttpResponse):
-		print("Response Status: %s" % response.status)
-	BetterHttp.interceptors.use_response(response_interceptor)
+    var request_interceptor = func(url:String, method, headers, body):
+        print("请求 URL: %s" % url)
+        print("最终 Headers: %s" % JSON.stringify(headers))
+        return url.ends_with("3") # 返回 false 可拦截请求
+    BetterHttp.interceptors.use_request(request_interceptor)
+    
+    var response_interceptor = func(response:BetterHttpResponse):
+        print("响应状态码: %s" % response.status)
+    BetterHttp.interceptors.use_response(response_interceptor)
 
-	# clean
-	BetterHttp.interceptors.eject_request(request_interceptor)
-	BetterHttp.interceptors.eject_response(response_interceptor)
+    # 移除拦截器
+    BetterHttp.interceptors.eject_request(request_interceptor)
+    BetterHttp.interceptors.eject_response(response_interceptor)
+
 ```
 
-### Basic GET Request
+### 基础 GET 请求
 
-```js
+```gdscript
 func _ready():
-	# Returns a strongly typed BetterHttpResponse object
-	var response = await BetterHttp.GET("https://jsonplaceholder.typicode.com/todos/1")
-	
-	if response.is_success():
-		# Automatically parse JSON
-		var data = response.json()
-		print("Title: ", data["title"])
-	else:
-		push_error("Request failed. Code: %d" % response.code)
+    # 返回一个强类型的 BetterHttpResponse 对象
+    var response = await BetterHttp.GET("https://jsonplaceholder.typicode.com/todos/1")
+    
+    if response.is_success():
+        # 自动解析 JSON
+        var data = response.json()
+        print("标题: ", data["title"])
+    else:
+        push_error("请求失败，错误码: %d" % response.status)
 
 ```
 
-### POST Request with JSON
+### 发送 POST 请求 (带 JSON 载荷)
 
-```js
+```gdscript
 func send_score():
-	var payload = {
-		"username": "PlayerOne",
-		"score": 9999
-	}
-	
-	# Content-Type header is set to application/json by default for POST
-	var response = await BetterHttp.POST("https://api.example.com/scores", payload)
-	
-	if response.is_success():
-		print("Score submitted successfully.")
+    var payload = {
+        "username": "PlayerOne",
+        "score": 9999
+    }
+    
+    # 对于 POST 请求，如果发送的是字典或数组，Content-Type 默认会被设为 application/json
+    var response = await BetterHttp.POST("https://api.example.com/scores", payload)
+    
+    if response.is_success():
+        print("分数提交成功。")
 
 ```
 
-## API Reference
+## API 参考
 
-### Methods
+### 方法 (Methods)
 
-All methods are asynchronous and must be awaited.
+所有请求方法均为异步执行，必须使用 `await`。
 
-* `GET(url: String, query: Dictionary, headers: PackedStringArray = []) -> BetterHttpResponse`
-* `POST(url: String, body: String, headers: PackedStringArray = [...]) -> BetterHttpResponse`
-* `PUT(url: String, body: String, headers: PackedStringArray = [...]) -> BetterHttpResponse`
-* `DELETE(url: String, query: Dictionary, headers: PackedStringArray = []) -> BetterHttpResponse`
+* `GET(url: String, query: Dictionary = {}, headers: Dictionary = {}) -> BetterHttpResponse`
+* `POST(url: String, data: Variant = null, headers: Dictionary = {}) -> BetterHttpResponse`
+* `PUT(url: String, data: Variant = null, headers: Dictionary = {}) -> BetterHttpResponse`
+* `DELETE(url: String, query: Dictionary = {}, headers: Dictionary = {}) -> BetterHttpResponse`
 
-### BetterHttpResponse Object
+### BetterHttpResponse 对象属性与方法
 
-The `BetterHttpResponse` object returned by requests contains the following properties and methods:
+请求返回的 `BetterHttpResponse` 对象包含以下内容：
 
-* **Properties:**
-* `code` (int): HTTP status code (e.g., 200, 404).
-* `headers` (Dictionary): Response headers.
-* `body_raw` (PackedByteArray): Raw response body.
-* `error` (int): Godot `Error` enum (e.g., `OK`, `ERR_CANT_CONNECT`).
+* **属性：**
+* `status` (int): HTTP 状态码（如 200, 404）。
+* `headers` (Dictionary): 响应头。
+* `_body_raw` (PackedByteArray): 原始响应体数据。
+* `_error` (int): Godot 的 `Error` 枚举（如 `OK`, `ERR_TIMEOUT`）。
 
 
-* **Methods:**
-* `is_success() -> bool`: Returns `true` if `error` is `OK` and `code` is between 200-299.
-* `text() -> String`: returns the body as a UTF-8 string.
-* `json() -> Variant`: Parses the body as JSON. Returns `null` on failure.
+* **方法：**
+* `is_success() -> bool`: 当 `_error` 为 `OK` 且 `status` 在 200-299 之间时返回 `true`。
+* `text() -> String`: 将响应体转换为 UTF-8 字符串返回。
+* `json() -> Variant`: 将响应体解析为 JSON。解析失败时返回 `null`。
 
-## License
+## 开源协议
 
-MIT License. Free to use in personal and commercial projects.
+MIT License。可自由用于个人或商业项目。
