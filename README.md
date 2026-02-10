@@ -22,8 +22,13 @@
 4. **重启编辑器** 以确保 Autoload 单例被正确注册。
 
 ## 示例
+## Example
+
+![Example Code](doc/example.png)
 
 响应控制台日志：
+
+![Example Result](doc/result.png)
 
 ## 使用方法
 
